@@ -12,7 +12,7 @@
 
   app.use(
     cors({
-      origin: "http://localhost:3000",
+      origin: "https://mern-auth-client-c3zo.onrender.com",
       methods: "GET,POST,PUT,DELETE",
       credentials: true,
     })
