@@ -12,7 +12,7 @@
 
   app.use(
     cors({
-      origin: "https://mern-auth-client-c3zo.onrender.com",
+      origin: "https://mern-auth-client-peach.vercel.app",
       methods: "GET,POST,PUT,DELETE",
       credentials: true,
     })
