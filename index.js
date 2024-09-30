@@ -10,13 +10,44 @@
   const PORT = process.env.PORT || 4000;
   const app = express();
 
-  app.use((req, res, next) => {
-    res.header("Access-Control-Allow-Origin", "https://mern-auth-client-peach.vercel.app"); // Your frontend URL
-    res.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE");
-    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  app.use(function (req, res, next) {
+    // Allowed origins list
+    const allowedOrigins = [
+        'http://localhost:3000', 
+        'https://mern-auth-client-peach.vercel.app'
+    ];
+
+    const origin = req.headers.origin;
+
+    // Check if the request's origin is in the allowed origins list
+    if (allowedOrigins.includes(origin)) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+    }
+
+    // Allow credentials (cookies, authentication tokens)
     res.header("Access-Control-Allow-Credentials", "true");
+
+    // Allowed headers
+    res.header(
+        "Access-Control-Allow-Headers", 
+        "Origin, X-Requested-With, Content-Type, Accept, Authorization"
+    );
+
+    // Allowed methods
+    res.header(
+        "Access-Control-Allow-Methods", 
+        "GET, POST, PUT, DELETE, UPDATE"
+    );
+
+    // Handle preflight (OPTIONS) requests
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(200); // Preflight response
+    }
+
     next();
-  });
+});
+
+ 
 
   connectDB();
   app.use(express.json());
