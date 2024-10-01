@@ -8,6 +8,7 @@ exports.errorMessages = {
   internalServerError: "Something went wrong.",
   GoogleLoginFailed:"Google login failed.",
   tokenValid:"Token is not valid.",
+
 };
 exports.successMessages = {
   registrationSuccess: "User registered successful.",

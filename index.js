@@ -18,28 +18,18 @@
     ];
 
     const origin = req.headers.origin;
-
-    // Check if the request's origin is in the allowed origins list
     if (allowedOrigins.includes(origin)) {
         res.setHeader('Access-Control-Allow-Origin', origin);
     }
-
-    // Allow credentials (cookies, authentication tokens)
     res.header("Access-Control-Allow-Credentials", "true");
-
-    // Allowed headers
     res.header(
         "Access-Control-Allow-Headers", 
         "Origin, X-Requested-With, Content-Type, Accept, Authorization"
     );
-
-    // Allowed methods
     res.header(
         "Access-Control-Allow-Methods", 
         "GET, POST, PUT, DELETE, UPDATE"
     );
-
-    // Handle preflight (OPTIONS) requests
     if (req.method === 'OPTIONS') {
         return res.sendStatus(200); // Preflight response
     }
