@@ -13,7 +13,7 @@ const {
 dotenv.config();
 exports.register = async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, role } = req.body;
     if (!name) {
       return createErrorResponse(res, errorMessages.nameError);
     }
@@ -27,11 +27,13 @@ exports.register = async (req, res) => {
     if (existingUser) {
       return createErrorResponse(res, errorMessages.emailExist);
     }
+    
     const hashedPassword = await bcrypt.hash(password, 10);
     const newUser = await user.create({
       name,
       email: email.toLowerCase(),
       password: hashedPassword,
+      role:role
     });
     return createSuccessResponse(
       res,
@@ -45,7 +47,7 @@ exports.register = async (req, res) => {
 };
 exports.login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, role } = req.body;
     if (!email) {
       return createErrorResponse(res, errorMessages.emailError);
     }
@@ -56,6 +58,9 @@ exports.login = async (req, res) => {
     if (!existingUser) {
       return createErrorResponse(res, errorMessages.userNotFound);
     }
+    if (existingUser.role !== role) {
+      return createErrorResponse(res, errorMessages.invalidRole);
+    }
     const isPasswordValid = await bcrypt.compare(
       password,
       existingUser.password
@@ -64,7 +69,7 @@ exports.login = async (req, res) => {
       return createErrorResponse(res, errorMessages.invalidCredentials);
     }
     const token = jwt.sign(
-      { userId: existingUser._id },
+      { userId: existingUser._id, role: existingUser.role },
       process.env.SECRET_KEY,
       { expiresIn: "30d" }
     );

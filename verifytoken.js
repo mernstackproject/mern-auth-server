@@ -12,6 +12,7 @@ exports.verifyToken = (req, res, next) => {
         createErrorResponse(res, errorMessages.tokenValid);
       }
      req.loginUserId = decoded.userId;
+     req.userRole = decoded.role
       next();
     });
   } else {
@@ -20,4 +21,14 @@ exports.verifyToken = (req, res, next) => {
       message: "Token not provided",
     });
   }
+};
+
+exports.checkAdminRole = (req, res, next) => {
+  if (req.userRole !== 'admin') {
+    return res.status(403).json({
+      success: false,
+      message: "Access denied:Admins only.",
+    });
+  }
+  next();
 };

@@ -2,6 +2,7 @@
   const cors = require("cors");
   const connectDB = require("./config");
   const user = require("./routes/User");
+  const admin  = require("./routes/admin")
   const Razorpay = require("razorpay");
   const dotenv = require("dotenv");
   dotenv.config();
@@ -9,6 +10,7 @@
   const crypto =require("crypto")
   const PORT = process.env.PORT || 4000;
   const app = express();
+  const { Worker } = require('worker_threads');
 
   app.use(function (req, res, next) {
     // Allowed origins list
@@ -37,16 +39,19 @@
     next();
 });
 
- 
-
+ app.get("/",(req,res)=>{
+  res.send({message:"hello shya xvxm"})
+ })
   connectDB();
   app.use(express.json());
   app.use("/api/v1", user);
+  app.use("/api/v1",admin)
   instance = new Razorpay({
     key_id:process.env.RAZOR_PAY_KEY_ID, 
     key_secret:process.env.RAZOR_PAY_KEY_SECRET, 
   });
   app.post("/api/v1/checkout", async (req, res) => {
+  
     try {
       const options = {
         amount: Number(req.body.amount * 100),  // Converting to smallest unit (paise for INR)
@@ -103,7 +108,29 @@
   app.get("/page", (req,res)=>{
     res.send("hello")
   })
+
+  app.get("/heavy", (req, res) => {
+    const worker = new Worker("./worker.js"); // Worker create karna
+    console.log(worker)
+    worker.on("message", (data) => {
+        console.log("///.." ,data);
+        res.status(200).json(data ); // Worker se message receive karna
+    });
+
+    worker.on("error", (err) => {
+      console.log("..,,..,.", err)
+        res.status(500).json({ error: err.message }); // Error handling
+    });
+
+    worker.on("exit", (code) => {
+      console.log(",,,", code)
+        if (code !== 0) {
+            console.error(`Worker stopped with exit code ${code}`);
+            res.status(500).json({ error: "Worker stopped with exit code " + code });
+        }
+    });
+});
+
   app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
-  });
-
+  }); 

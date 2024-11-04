@@ -6,6 +6,6 @@ router.post("/register", register);
 router.post("/login", login);
 router.post("/OauthGoogleLogin", OauthGoogleLogin);
 router.post("/verifyToken", verifyToken);
-router.get("/found-user",verifyToken,foundUser );
+router.get("/found-user", verifyToken, foundUser); 
 router.post("/validateToken",validateToken)
 module.exports = router; 

@@ -8,13 +8,16 @@ exports.errorMessages = {
   internalServerError: "Something went wrong.",
   GoogleLoginFailed:"Google login failed.",
   tokenValid:"Token is not valid.",
-
+  invalidRole:"Role is not valid for authentication",
+  adminNotFound:"Admin not found",
+  adminAccess:"Access denied: Admins only."
 };
 exports.successMessages = {
   registrationSuccess: "User registered successful.",
   loginSuccess: "Login successful.",
   OauthLogin:"Google login successful.",
- userFound:"User found successful."
+ userFound:"User found successful.",
+ adminProfileFound : "Admin profile found successful"
 };
 
 exports.createErrorResponse = (res, message, statusCode = 400) => {
