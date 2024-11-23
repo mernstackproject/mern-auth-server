@@ -228,7 +228,7 @@ exports.register = async (req, res) => {
     if (!email) {
       return createErrorResponse(res, errorMessages.emailError);
     }
-    if (emailRegex.test(email)) {
+    if (!emailRegex.test(email)) {
       return createErrorResponse(res, errorMessages.emailRegexError);
     }
     if (!password) {
@@ -240,36 +240,35 @@ exports.register = async (req, res) => {
     if (password !== confirmPassword) {
       return createErrorResponse(res, errorMessages.passwordMismatch);
     }
-
-    const existingUser = await user.findOne({ email: email.toLowerCase() });
-    if (existingUser) {
-      return createErrorResponse(res, errorMessages.emailExist);
-    }
-
     const hashedPassword = await bcrypt.hash(password, 10);
     if (!hashedPassword) {
       return createErrorResponse(res, errorMessages.passWordHash);
     }
-    const otp = generateOtp();
+    const existBoth = await user.findOne({
+      $or: [{ email: email.toLowerCase() }, { mobile: phoneNumber }],
+    });
+    if (existBoth) {
+      return res.status(400).json({ message: "already exits", status: false });
+    }
+    const expiry = Date.now() + 2 * 60 * 1000;
+    const otp = Math.floor(100000 + Math.random() * 900000); // 6-digit OTP
     const newUser = await user.create({
       name,
       email: email.toLowerCase(),
-      phoneNumber,
+      mobile: phoneNumber,
       password: hashedPassword,
       referralCode,
-      otp: otp, // Store OTP temporarily
-    });
-
-    // Send OTP to user's email
-    await sendOtpEmail(email, otp);
+      otp: otp, 
+      role: "user",
+      otpExpired: expiry,
+    })
 
     return createSuccessResponse(
       res,
-      { newUser },
       successMessages.registrationSuccess
     );
   } catch (e) {
-    console.error(e);
+    console.error(e.message, "lkjk");
     return createErrorResponse(res, errorMessages.internalServerError, 500);
   }
 };
@@ -282,12 +281,26 @@ exports.verifyOtp = async (req, res) => {
     if (!userRecord) {
       return createErrorResponse(res, errorMessages.userNotFound);
     }
-    if (userRecord.otp !== otp) {
+
+    // Check if OTP is expired
+    if (Date.now() > userRecord.otpExpired) {
+      return createErrorResponse(res, errorMessages.otpExpired);
+    }
+
+    // Check if OTP matches
+    if (userRecord.otp !== Number(otp)) {
       return createErrorResponse(res, errorMessages.invalidOtp);
     }
 
-    // OTP verified, clear the OTP from database
-    userRecord.otp = null;
+    // Check if already verified
+    if (userRecord.isVerified) {
+      return createErrorResponse(res, errorMessages.verifiedUser);
+    }
+
+    // OTP is valid and verified
+    userRecord.otp = null; // Clear OTP
+    userRecord.otpExpired = null; // Clear OTP expiration
+    userRecord.isVerified = true; // Mark as verified
     await userRecord.save();
 
     return createSuccessResponse(
@@ -318,6 +331,9 @@ exports.login = async (req, res) => {
     if (!existingUser) {
       return createErrorResponse(res, errorMessages.userNotFound);
     }
+    if(!existingUser.isVerified){
+      return createErrorResponse(res,"Please verify otp");
+    }
     const isPasswordValid = await bcrypt.compare(
       password,
       existingUser.password
@@ -328,7 +344,7 @@ exports.login = async (req, res) => {
     const token = jwt.sign(
       { userId: existingUser._id },
       process.env.SECRET_KEY,
-      { expiresIn: rememberMe ? "30d" : "1d" }
+      { expiresIn: rememberMe ? "2m" : "2m" }
     );
 
     await user.updateOne({ _id: existingUser._id }, { $set: { token: token } });
@@ -360,23 +376,21 @@ exports.forgotPassword = async (req, res) => {
     if (!existingUser) {
       return createErrorResponse(res, errorMessages.userNotFound);
     }
-
-    const resetToken = jwt.sign(
-      { userId: existingUser._id },
-      process.env.SECRET_KEY,
-      { expiresIn: "1h" }
-    );
+    const otp = Math.floor(100000 + Math.random() * 900000); // 6-digit OTP
+    const otpExpiry = Date.now() + 2 * 60 * 1000;
+    existingUser.otp = otp;
+    existingUser.otpExpired = otpExpiry;
     // const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
 
     // Send reset URL via email
-    const mailOptions = {
-      from: process.env.EMAIL_USER,
-      to: email,
-      subject: "Password Reset Request",
-      text: `Click the link to reset your password: ${resetUrl}`,
-    };
-    await transporter.sendMail(mailOptions);
-
+    // const mailOptions = {
+    //   from: process.env.EMAIL_USER,
+    //   to: email,
+    //   subject: "Password Reset Request",
+    //   text: `Click the link to reset your password: ${resetUrl}`,
+    // };
+    // await transporter.sendMail(mailOptions);
+    await existingUser.save();
     return createSuccessResponse(
       res,
       {},
@@ -388,59 +402,82 @@ exports.forgotPassword = async (req, res) => {
   }
 };
 
-// Reset Password (after clicking on the reset link)
 exports.resetPassword = async (req, res) => {
-  const { token, newPassword } = req.body;
+  const { email, newPassword } = req.body;
   try {
-    const decoded = jwt.verify(token, process.env.SECRET_KEY);
-    const userRecord = await user.findById(decoded.userId);
+    const userRecord = await user.findOne({ email: email.toLowerCase() });
     if (!userRecord) {
       return createErrorResponse(res, errorMessages.userNotFound);
     }
-
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-    userRecord.password = hashedPassword;
+    if (!userRecord.isResetPasswordVerified) {
+      return createErrorResponse(res, errorMessages.otpNotVerified);
+    }
+    userRecord.password = newPassword;
+    userRecord.isResetPasswordVerified = false;
     await userRecord.save();
 
     return createSuccessResponse(res, {}, successMessages.passwordResetSuccess);
   } catch (e) {
     console.error(e);
-    return createErrorResponse(res, errorMessages.invalidToken, 400);
+    return createErrorResponse(res, errorMessages.internalServerError, 500);
   }
 };
 exports.resendOtp = async (req, res) => {
   const { email } = req.body;
-  if (!email) {
-    return res
-      .status(400)
-      .json({ message: "Email is required", status: false });
-  }
+
   try {
-    const userRecord = await user.findOne({ email });
+    const userRecord = await user.findOne({ email: email.toLowerCase() });
     if (!userRecord) {
-      return res.status(400).json({ message: "User not found", status: false });
-    }
-    if (userRecord.isVerified) {
-      return res
-        .status(200)
-        .json({ message: "User already verified", status: true });
+      return createErrorResponse(res, "User not found");
     }
 
-    const newOtp = Math.floor(100000 + Math.random() * 900000);
-    userRecord.mobileOtp = newOtp;
+    if (userRecord.isVerified) {
+      return createErrorResponse(res, "User is already verified");
+    }
+
+    // Generate new OTP and set expiry
+    const otp = Math.floor(100000 + Math.random() * 900000); // 6-digit OTP
+    const otpExpiry = Date.now() + 2 * 60 * 1000; // 2 minutes expiry
+
+    userRecord.otp = otp;
+    userRecord.otpExpired = otpExpiry;
     await userRecord.save();
 
-    return res.status(200).json({
-      message: "OTP resent successfully",
-      status: true,
-      newOtp: newOtp,
-    });
-  } catch (e) {
-    console.error("Error in resending OTP:", e);
-    return res
-      .status(500)
-      .json({ message: "Internal server error", status: false });
+    // Send OTP to user's email or phone (implement email/SMS sending logic)
+    // await sendOtpEmailOrSms(userRecord.email, otp);
+
+    return createSuccessResponse(res, "New OTP sent successfully");
+  } catch (error) {
+    console.error(error);
+    return createErrorResponse(res, "Error resending OTP");
   }
+};
+exports.isResendPasswordVerify = async () => {
+  try {
+    const { email, otp } = req.body;
+
+    const userRecord = await user.findOne({ email: email.toLowerCase() });
+    if (!userRecord) {
+      return createErrorResponse(res, errorMessages.userNotFound);
+    }
+    if (Date.now() > userRecord.otpExpired) {
+      return createErrorResponse(res, errorMessages.otpExpired);
+    }
+
+    if (userRecord.otp !== Number(otp)) {
+      return createErrorResponse(res, errorMessages.invalidOtp);
+    }
+    userRecord.otp = null;
+    userRecord.otpExpired = null;
+    userRecord.isResetPasswordVerified = true;
+    await userRecord.save();
+
+    return createSuccessResponse(
+      res,
+      { user: userRecord },
+      successMessages.otpVerified
+    );
+  } catch (e) {}
 };
 exports.OauthGoogleLogin = async (req, res) => {
   const { token } = req.body;
@@ -468,7 +505,7 @@ exports.OauthGoogleLogin = async (req, res) => {
       { userId: userRecord._id },
       process.env.SECRET_KEY,
       {
-        expiresIn: "30d",
+        expiresIn: "1h",
       }
     );
     await user.updateOne(
@@ -509,7 +546,17 @@ exports.validateToken = async (req, res) => {
     }
     jwt.verify(token, process.env.SECRET_KEY, (err, user) => {
       if (err) {
-        return createSuccessResponse(res, { isValid: false });
+        // Check if the error is token expiration
+        if (err instanceof jwt.TokenExpiredError) {
+          return createSuccessResponse(res, {
+            isValid: false,
+            message: "Token has expired",
+          });
+        }
+        return createSuccessResponse(res, {
+          isValid: false,
+          message: "Invalid token",
+        });
       }
       return createSuccessResponse(res, { isValid: true });
     });
