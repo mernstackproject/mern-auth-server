@@ -1,27 +1,40 @@
 const jwt = require("jsonwebtoken");
 const {
-  createErrorResponse,
-
+  createErrorResponse
 } = require("./helpers/responsehelper");
 const {errorMessages} =  require("./helpers/messageConstants") 
 exports.verifyToken = (req, res, next) => {
   let token = req.headers["x-access-token"] || req.headers["authorization"];
-  token = token.replace(/^Bearer\s+/, "");
-  if (token) {
-    jwt.verify(token, process.env.SECRET_KEY, (err, decoded) => {
-      if (err) {
-        createErrorResponse(res, errorMessages.tokenValid);
-      }
-     req.loginUserId = decoded.userId;
-     req.userRole = decoded.role
-      next();
-    });
-  } else {
-    return res.json({
+  if (!token) {
+    return res.status(401).json({
       success: false,
       message: "Token not provided",
     });
   }
+  token = token.replace(/^Bearer\s+/, "");
+  jwt.verify(token, process.env.SECRET_KEY, (err, decoded) => {
+    if (err) {
+      if (err.name === "TokenExpiredError") {
+        return res.status(401).json({
+          success: false,
+          message: "Token has expired",
+        });
+      } else if (err.name === "JsonWebTokenError") {
+        return res.status(401).json({
+          success: false,
+          message: "Invalid token",
+        });
+      } else {
+        return res.status(500).json({
+          success: false,
+          message: "Failed to authenticate token",
+        });
+      }
+    }
+    req.loginUserId = decoded.userId;
+    req.userRole = decoded.role;
+    next();
+  });
 };
 
 exports.checkAdminRole = (req, res, next) => {

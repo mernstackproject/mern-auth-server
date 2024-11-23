@@ -57,7 +57,7 @@ exports.AdminLogin = async (req, res) => {
     const token = jwt.sign(
       { userId: existingUser._id, role: existingUser.role },
       process.env.SECRET_KEY,
-      { expiresIn: "30d" }
+      { expiresIn: "1h" }
     );
 
     await user.updateOne({ _id: existingUser._id }, { $set: { token: token } });
