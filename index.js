@@ -11,7 +11,15 @@
   const PORT = process.env.PORT || 4000;
   const app = express();
   const { Worker } = require('worker_threads');
+  const {Server} = require("socket.io")
+  const {createServer} = require("http")
+  const {connection} = require("./socket/connection")
+ 
+  const server= createServer(app)
+  const io= new Server(server)
+  connection(io)
 
+   
   app.use(function (req, res, next) {
     // Allowed origins list
     const allowedOrigins = [
@@ -131,6 +139,6 @@
     });
 });
 
-  app.listen(PORT, () => {
+  server.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
   }); 
