@@ -4,6 +4,7 @@
 // const razorPay = require("../models/Payment");
 // const dotenv = require("dotenv");
 const emailRegex = require("../regex");
+
 // const {
 //   createSuccessResponse,
 //   createErrorResponse,
@@ -317,7 +318,7 @@ exports.verifyOtp = async (req, res) => {
 // User Login
 exports.login = async (req, res) => {
   try {
-    const { email, password, rememberMe } = req.body;
+    const { email, password } = req.body;
     if (!email) {
       return createErrorResponse(res, errorMessages.emailError);
     }
@@ -331,9 +332,7 @@ exports.login = async (req, res) => {
     if (!existingUser) {
       return createErrorResponse(res, errorMessages.userNotFound);
     }
-    if(!existingUser.isVerified){
-      return createErrorResponse(res,"Please verify otp");
-    }
+   
     const isPasswordValid = await bcrypt.compare(
       password,
       existingUser.password
@@ -344,19 +343,14 @@ exports.login = async (req, res) => {
     const token = jwt.sign(
       { userId: existingUser._id },
       process.env.SECRET_KEY,
-      { expiresIn: rememberMe ? "2m" : "2m" }
+      { expiresIn: "1d" }
     );
 
     await user.updateOne({ _id: existingUser._id }, { $set: { token: token } });
 
     // Optionally, save token in cookies for "Remember Me"
-    if (rememberMe) {
-      res.cookie("token", token, {
-        httpOnly: true,
-        maxAge: 30 * 24 * 60 * 60 * 1000,
-      }); // 30 days
-    }
-
+  
+      
     return createSuccessResponse(
       res,
       { user: existingUser, token },
@@ -512,6 +506,7 @@ exports.OauthGoogleLogin = async (req, res) => {
       { _id: userRecord._id },
       { $set: { token: jwtToken } }
     );
+   
     return createSuccessResponse(
       res,
       { user: userRecord, token: jwtToken },

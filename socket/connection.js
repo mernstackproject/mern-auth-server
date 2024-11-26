@@ -1,124 +1,69 @@
-const jwt = require('jsonwebtoken');
-const users = {}; 
-let Io;
-
+const users = {}; // To map userId to socketId
+let Io; // To hold the socket.io instance
+const jwt = require("jsonwebtoken");
 
 function connection(io) {
   Io = io;
 
+  // When a new socket connection happens
   Io.on('connection', (socket) => {
-    console.log('New connection');
-    if (!users[socket.id]) {
-      users[socket.id] = socket.id;
-      Io.emit('all-users', users); 
-    }
-    socket.on('join-auction', (auctionId, token) => {
-      const userId = handleJwtToken(token);
+    console.log('New connection', socket.id);
+
+    socket.on('login', (token) => {
+      const userId = verifyToken(token);
       if (userId) {
-        socket.join(auctionId); 
-        console.log(`User ${userId} joined auction ${auctionId}`);
-        Io.to(socket.id).emit('auction-details', { auctionId, message: 'Welcome to the auction!' });
+        if (!users[userId]) {
+          users[userId] = [];
+        }
+        users[userId].push(socket.id);
+        console.log(`User ${userId} logged in with socket ID ${socket.id}`);
+        socket.join(userId); // Join the user-specific room
+        io.emit("hello" , {message:"hello everyone"})
+        // Emit notification to the current user
+        sendNotificationToUser(userId);
       } else {
-        socket.emit('error', 'Invalid token');
+        console.log('Invalid token, disconnecting socket');
+        socket.disconnect();
       }
     });
-    socket.on('bid', async (data) => {
-      const token = socket.handshake.query.token;
-      const userId = handleJwtToken(token);
-      if (userId) {
-        updateAuctionBidAndNotifyAllUsers(data.auctionId, userId, data);
-      } else {
-        socket.emit('error', 'Invalid token');
-      }
-    });
+
+    // Handle disconnection
     socket.on('disconnect', () => {
-      console.log('User disconnected');
-      delete users[socket.id]; // Remove user from the user list
-      Io.emit('all-users', users); // Emit updated users list globally
+      for (const userId in users) {
+        const socketIndex = users[userId].indexOf(socket.id);
+        if (socketIndex !== -1) {
+          users[userId].splice(socketIndex, 1); 
+          console.log(`Socket ${socket.id} disconnected for user ${userId}`);
+          if (users[userId].length === 0) {
+            delete users[userId]; 
+          }
+          break;
+        }
+      }
     });
   });
 }
-function updateAuctionBidAndNotifyAllUsers(auctionId, userId, data) {
-  if (auctionId) {
-    Io.emit('auction-update', {
-      auctionId: auctionId,
-      currentBid: data.bidAmount,
-      bidder: userId,
-      timestamp: new Date(),
-    });
-    Io.to(auctionId).emit('bid', {
-      userId: userId,
-      bidAmount: data.bidAmount,
-      auctionId: auctionId,
-      timestamp: new Date(),
-    });
 
-    console.log(`Bid from user ${userId} for auction ${auctionId}: ${data.bidAmount}`);
+// Utility function to send a notification to a specific user
+function sendNotificationToUser(userId) {
+  if (users[userId] && users[userId].length > 0) {
+    users[userId].forEach((socketId) => {
+      Io.to(socketId).emit('login-notification', { message: "hello" });
+    });
   } else {
-    console.log("Auction not found for bid notification:", auctionId);
+    console.log(`User ${userId} is not connected`);
   }
 }
-function handleJwtToken(token) {
-  if (!token) {
-    console.log("Token not provided");
-    return null;
-  }
 
-  const decoded = verifyToken(token);
-  if (!decoded) {
-    console.log("Invalid token");
-    return null;
-  }
-
-  return decoded.id;
-}
+// JWT Verification
 function verifyToken(token) {
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    return decoded;
-  } catch (error) {
-    console.error("Token verification failed:", error.message);
+    const decoded = jwt.verify(token, process.env.SECRET_KEY);
+    return decoded.userId;
+  } catch (err) {
+    console.error('Token verification failed:', err.message);
     return null;
   }
 }
 
-// inside auction table i have the start time and i want to send the notification before 10 minutes of start time
-// i wan to create cron job for this
-const cron = require("node-cron")   
-
-function scheduleAuctionNotifications() {
-    cron.schedule('* * * * *', async () => {
-      const now = new Date();
-      const tenMinutesFromNow = new Date(now.getTime() + 10 * 60 * 1000);
-  
-      // Find auctions that start in the next 10 minutes
-      const auctionsStartingSoon = await Auction.find({
-        startTime: { $gte: now, $lt: tenMinutesFromNow }, // Auctions starting in the next 10 minutes
-        status: 'upcoming', // Only upcoming auctions
-      });
-  
-      if (auctionsStartingSoon.length > 0) {
-        auctionsStartingSoon.forEach((auction) => {
-          
-          
-          // Send a notification to all users in the auction room
-          Io.to(auction._id.toString()).emit("auction-starting-soon", {
-            message: `Auction "${auction.title}" is starting in 10 minutes!`
-          });
-  
-          console.log(`Sent notification for auction "${auction.title}" starting soon.`);
-        });
-      } else {
-        console.log("No auctions starting in the next 10 minutes.");
-      }
-    });
-  }
-  
-function getIo() {
-  if (!Io) {
-    throw new Error('Socket.io is not connected');
-  }
-  return Io;
-}
-
-module.exports = { connection, getIo };
+module.exports = { connection, sendNotificationToUser };
