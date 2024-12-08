@@ -20,6 +20,7 @@ exports.errorMessages = {
     otpExpired:"OTP expired",
     invalidOtp:"Invalid OTP",
     passwordMismatch:"Password and confirmPassword both will be same ",
+    deleteUser :"Your previous account has been deleted by admin. Please create a new account"
     
   };
   exports.successMessages = {

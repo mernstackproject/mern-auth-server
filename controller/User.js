@@ -247,6 +247,7 @@ exports.register = async (req, res) => {
     }
     const existBoth = await user.findOne({
       $or: [{ email: email.toLowerCase() }, { mobile: phoneNumber }],
+      $and: [{ isDeleted: false }],
     });
     if (existBoth) {
       return res.status(400).json({ message: "already exits", status: false });
@@ -259,15 +260,12 @@ exports.register = async (req, res) => {
       mobile: phoneNumber,
       password: hashedPassword,
       referralCode,
-      otp: otp, 
+      otp: otp,
       role: "user",
       otpExpired: expiry,
-    })
+    });
 
-    return createSuccessResponse(
-      res,
-      successMessages.registrationSuccess
-    );
+    return createSuccessResponse(res, successMessages.registrationSuccess);
   } catch (e) {
     console.error(e.message, "lkjk");
     return createErrorResponse(res, errorMessages.internalServerError, 500);
@@ -278,7 +276,10 @@ exports.register = async (req, res) => {
 exports.verifyOtp = async (req, res) => {
   const { email, otp } = req.body;
   try {
-    const userRecord = await user.findOne({ email: email.toLowerCase() });
+    const userRecord = await user.findOne({
+      email: email.toLowerCase(),
+      isDeleted: false,
+    });
     if (!userRecord) {
       return createErrorResponse(res, errorMessages.userNotFound);
     }
@@ -289,7 +290,7 @@ exports.verifyOtp = async (req, res) => {
     }
 
     // Check if OTP matches
-    if (userRecord.otp !== Number(otp)) {
+    if (Number(userRecord.otp) !== Number(otp)) {
       return createErrorResponse(res, errorMessages.invalidOtp);
     }
 
@@ -310,7 +311,7 @@ exports.verifyOtp = async (req, res) => {
       successMessages.otpVerified
     );
   } catch (e) {
-    console.error(e);
+    console.error(e?.message, "message");
     return createErrorResponse(res, errorMessages.internalServerError, 500);
   }
 };
@@ -325,14 +326,34 @@ exports.login = async (req, res) => {
     if (!password) {
       return createErrorResponse(res, errorMessages.passwordError);
     }
-    const existingUser = await user.findOne({
+    let existingUser = await user.findOne({
       email: email.toLowerCase(),
       role: "user",
-    });
+      isDeleted: false,
+    })
     if (!existingUser) {
+      existingUser = await user.findOne({
+        email: email.toLowerCase(),
+        role: "user",
+        isDeleted: true,
+      });
+
+      if (existingUser) {
+        return createErrorResponse(
+          res,
+          errorMessages.deleteUser
+        );
+      }
+
       return createErrorResponse(res, errorMessages.userNotFound);
     }
-   
+
+    // Check if user is verified
+    if (!existingUser.isVerified) {
+      return createErrorResponse(res, "Please verify your otp first");
+    }
+
+    // Validate password
     const isPasswordValid = await bcrypt.compare(
       password,
       existingUser.password
@@ -340,17 +361,18 @@ exports.login = async (req, res) => {
     if (!isPasswordValid) {
       return createErrorResponse(res, errorMessages.invalidCredentials);
     }
+
+    // Generate JWT token
     const token = jwt.sign(
       { userId: existingUser._id },
       process.env.SECRET_KEY,
       { expiresIn: "1d" }
     );
 
+    // Optionally, save token in cookies for "Remember Me"
     await user.updateOne({ _id: existingUser._id }, { $set: { token: token } });
 
-    // Optionally, save token in cookies for "Remember Me"
-  
-      
+    // Return success response
     return createSuccessResponse(
       res,
       { user: existingUser, token },
@@ -366,7 +388,10 @@ exports.login = async (req, res) => {
 exports.forgotPassword = async (req, res) => {
   const { email } = req.body;
   try {
-    const existingUser = await user.findOne({ email: email.toLowerCase() });
+    const existingUser = await user.findOne({
+      email: email.toLowerCase(),
+      isDeleted: false,
+    });
     if (!existingUser) {
       return createErrorResponse(res, errorMessages.userNotFound);
     }
@@ -399,14 +424,21 @@ exports.forgotPassword = async (req, res) => {
 exports.resetPassword = async (req, res) => {
   const { email, newPassword } = req.body;
   try {
-    const userRecord = await user.findOne({ email: email.toLowerCase() });
+    const userRecord = await user.findOne({
+      email: email.toLowerCase(),
+      isDeleted: false,
+    });
     if (!userRecord) {
       return createErrorResponse(res, errorMessages.userNotFound);
     }
     if (!userRecord.isResetPasswordVerified) {
-      return createErrorResponse(res, errorMessages.otpNotVerified);
+      return createErrorResponse(res, "otp not verified");
     }
-    userRecord.password = newPassword;
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    if (!hashedPassword) {
+      return createErrorResponse(res, errorMessages.passWordHash);
+    }
+    userRecord.password = hashedPassword;
     userRecord.isResetPasswordVerified = false;
     await userRecord.save();
 
@@ -420,7 +452,10 @@ exports.resendOtp = async (req, res) => {
   const { email } = req.body;
 
   try {
-    const userRecord = await user.findOne({ email: email.toLowerCase() });
+    const userRecord = await user.findOne({
+      email: email.toLowerCase(),
+      isDeleted: false,
+    });
     if (!userRecord) {
       return createErrorResponse(res, "User not found");
     }
@@ -446,11 +481,14 @@ exports.resendOtp = async (req, res) => {
     return createErrorResponse(res, "Error resending OTP");
   }
 };
-exports.isResendPasswordVerify = async () => {
+exports.isResendPasswordVerify = async (req, res) => {
   try {
     const { email, otp } = req.body;
 
-    const userRecord = await user.findOne({ email: email.toLowerCase() });
+    const userRecord = await user.findOne({
+      email: email.toLowerCase(),
+      isDeleted: false,
+    });
     if (!userRecord) {
       return createErrorResponse(res, errorMessages.userNotFound);
     }
@@ -458,7 +496,7 @@ exports.isResendPasswordVerify = async () => {
       return createErrorResponse(res, errorMessages.otpExpired);
     }
 
-    if (userRecord.otp !== Number(otp)) {
+    if (Number(userRecord.otp) !== Number(otp)) {
       return createErrorResponse(res, errorMessages.invalidOtp);
     }
     userRecord.otp = null;
@@ -471,7 +509,9 @@ exports.isResendPasswordVerify = async () => {
       { user: userRecord },
       successMessages.otpVerified
     );
-  } catch (e) {}
+  } catch (e) {
+    cre
+  }
 };
 exports.OauthGoogleLogin = async (req, res) => {
   const { token } = req.body;
@@ -506,7 +546,7 @@ exports.OauthGoogleLogin = async (req, res) => {
       { _id: userRecord._id },
       { $set: { token: jwtToken } }
     );
-   
+
     return createSuccessResponse(
       res,
       { user: userRecord, token: jwtToken },

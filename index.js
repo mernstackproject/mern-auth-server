@@ -14,7 +14,8 @@
   const {Server} = require("socket.io")
   const {createServer} = require("http")
   const {connection} = require("./socket/connection")
- 
+  const morgan = require("morgan")
+
   const server= createServer(app)
   const io= new Server(server, {
     cors: {
@@ -23,8 +24,9 @@
     }
   })
   connection(io)
+ 
 
-   
+  app.use(morgan("dev"))
   app.use(function (req, res, next) {
     // Allowed origins list
     const allowedOrigins = [

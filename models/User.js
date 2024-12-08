@@ -48,7 +48,15 @@ const userSchema = new mongoose.Schema(
         type:Date,
        
     },
-    role: { type: String, enum: ["user", "admin", "superAdmin"], required: true },
+    role: { type: String, enum: ["user", "admin", "superAdmin"] },
+    isDeleted:{
+      type:Boolean,
+      default:false
+    },
+    socketIds:{
+      type:Array
+
+    } 
 
   },
   {
